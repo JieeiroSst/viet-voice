@@ -1,5 +1,6 @@
 import OnnxWebWorkerRuntime from "piper-tts-web/src/Runtime/Onnx/OnnxWebWorkerRuntime.js";
 import HuggingFaceVoiceProvider from "piper-tts-web/src/Provider/Voice/HuggingFaceVoiceProvider.js";
+import { createPersistentFetchProvider } from "./persistentFetchProvider.js";
 
 export const VOICES = {
   vi: "vi_VN-vais1000-medium",
@@ -94,38 +95,6 @@ async function downloadAsset(url, onProgress) {
   });
 }
 
-function createPersistentFetchProvider(onProgress, getRate) {
-  const objectUrls = new Set();
-
-  return {
-    async fetch(url) {
-      const key = `piper:${url}`;
-      let blob = await readAsset(key);
-      if (!blob) {
-        blob = await downloadAsset(url, (progress) => onProgress?.({ ...progress, url }));
-        await writeAsset(key, blob);
-      } else {
-        onProgress?.({ received: blob.size, total: blob.size, cached: true, url });
-      }
-
-      if (url.endsWith(".json")) {
-        const config = JSON.parse(await blob.text());
-        const baseLengthScale = config.inference.length_scale;
-        config.inference.length_scale = baseLengthScale / getRate();
-        return config;
-      }
-
-      const objectUrl = URL.createObjectURL(blob);
-      objectUrls.add(objectUrl);
-      return objectUrl;
-    },
-    destroy() {
-      for (const objectUrl of objectUrls) URL.revokeObjectURL(objectUrl);
-      objectUrls.clear();
-    },
-  };
-}
-
 class LocalPhonemizer {
   constructor() {
     this.worker = new Worker("/worker/PhonemizeWebWorker.js", { type: "module" });
@@ -148,7 +117,13 @@ class LocalPhonemizer {
 
 export function createLocalTtsEngine({ onProgress, getRate }) {
   const provider = new HuggingFaceVoiceProvider({
-    provider: createPersistentFetchProvider(onProgress, getRate),
+    provider: createPersistentFetchProvider({
+      onProgress,
+      getRate,
+      readAsset,
+      writeAsset,
+      downloadAsset,
+    }),
     baseUrl: MODEL_BASE_URL,
   });
   const onnxRuntime = new OnnxWebWorkerRuntime({ basePath: "/onnx/", numThreads: 1 });
