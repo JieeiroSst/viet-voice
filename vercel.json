@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "framework": "vite",
+  "installCommand": "ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm install",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
+}
